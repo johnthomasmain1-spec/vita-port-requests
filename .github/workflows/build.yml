@@ -1,0 +1,17 @@
+name: Build VPK
+on: [push, workflow_dispatch]
+jobs:
+  vita:
+    runs-on: ubuntu-latest
+    container: vitasdk/vitasdk:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ft2vita-vpk
+          path: build/ft2vita.vpk
