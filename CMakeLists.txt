@@ -26,7 +26,7 @@ if(VITA)
   if(PKG_CONFIG_FOUND)
     pkg_check_modules(VSDL REQUIRED SDL2_mixer SDL2_ttf SDL2_image sdl2)
     target_include_directories(${PROJECT_NAME} PRIVATE ${VSDL_INCLUDE_DIRS})
-    target_link_libraries(${PROJECT_NAME} ${VSDL_LDFLAGS} SceAppUtil_stub SceAppMgr_stub ScePower_stub stdc++ m)
+    target_link_libraries(${PROJECT_NAME} ${VSDL_LDFLAGS} SceAppUtil_stub SceAppMgr_stub ScePower_stub SceShaccCgExt taihen_stub SceShaccCg_stub stdc++ m)
   else()
     target_link_libraries(${PROJECT_NAME}
       SDL2_mixer SDL2_ttf SDL2_image SDL2
