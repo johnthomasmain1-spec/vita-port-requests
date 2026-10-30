@@ -25,9 +25,19 @@ then `./ft2vita --data <data folder>`.
 Install `ft2vita.vpk` with VitaShell. Saves go to `ux0:data/ft2vita/save/`.
 
 ## Controls
-Touch screen: everything works as in the original game (tap, drag fish/items).
-L / R: previous / next tank · D-pad ←/→: select fish · ✕: species chart of the selected fish
-△: Supplies · □: Species · SELECT: options · ◯ / START: back / close.
+Touch screen works exactly like the phone game. Everything can also be done with buttons:
+* Left stick / D-pad: move the hand cursor · ✕: tap (hold ✕ + move to drag fish and items)
+* Right stick: scroll lists under the cursor
+* L / R: previous / next tank (in Supplies: switch tabs)
+* △: Supplies · □: Species chart · SELECT: My Items · START: options
+* ◯: back / close
+* SELECT on the title screen: quit the game and write a debug dump
+
+## Saves, logs and dumps (ux0:data/ft2vita/save/)
+* save.json + save.json.bak + save.json.bak2 – rolling backups; a damaged save is restored automatically.
+* log.txt – log of the current session.
+* crash_<time>.txt – written automatically at start-up if the previous session did not close cleanly.
+* dump_<time>.txt – written when you quit with SELECT on the title screen (game state + recent log).
 
 ## What differs from the phone version
 * Online features are removed: ads, Facebook, cloud saves, daily rewards, offers, in-app purchases.

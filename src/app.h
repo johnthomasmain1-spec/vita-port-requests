@@ -10,5 +10,7 @@ void render();
 void shutdown();
 bool wantsQuit();
 // headless testing helpers
+std::string stateSummary();
+bool quitViaSelect();
 void debugCommand(const std::string& cmd);
 }

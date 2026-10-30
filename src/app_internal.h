@@ -64,6 +64,10 @@ struct State {
     std::vector<int> newMagic;
     float toastT = 0; std::string toast;
     bool showInfo = false;
+    // button control
+    float curX = SCREEN_W * .5f, curY = SCREEN_H * .5f, curSpeed = 0, stickX = 0, stickY = 0, rstickY = 0, rsY = 0;
+    bool cursorOn = false, cursorDown = false, rscroll = false, dpad[4] = {false, false, false, false};
+    bool quitViaSelect = false;
 };
 extern State S;
 extern WNode g_tank, g_store;

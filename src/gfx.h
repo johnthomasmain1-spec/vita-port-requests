@@ -20,6 +20,7 @@ struct Sprite {
     float px = .5f, py = .5f;
     float b[4] = {0, 0, 0, 0}; // border l,b,r,t (atlas px)
     float ppu = 1;
+    float k = 1;           // atlas pixels per logical pixel (hi-res sprites > 1)
     std::string name;
 };
 

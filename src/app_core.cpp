@@ -597,33 +597,49 @@ void event(const SDL_Event& e) {
         case SDL_MOUSEBUTTONDOWN: if (e.button.which != SDL_TOUCH_MOUSEID && e.button.button == SDL_BUTTON_LEFT) beginPress((float)e.button.x, (float)e.button.y); break;
         case SDL_MOUSEMOTION: if (e.motion.which != SDL_TOUCH_MOUSEID) movePress((float)e.motion.x, (float)e.motion.y); break;
         case SDL_MOUSEBUTTONUP: if (e.button.which != SDL_TOUCH_MOUSEID && e.button.button == SDL_BUTTON_LEFT) endPress((float)e.button.x, (float)e.button.y); break;
-        case SDL_FINGERDOWN: if (e.tfinger.touchId == 0 || true) { if (e.tfinger.fingerId == 0 || !S.pointerDown) beginPress(e.tfinger.x * SCREEN_W, e.tfinger.y * SCREEN_H); } break;
+        case SDL_FINGERDOWN: S.cursorOn = false; if (e.tfinger.touchId == 0 || true) { if (e.tfinger.fingerId == 0 || !S.pointerDown) beginPress(e.tfinger.x * SCREEN_W, e.tfinger.y * SCREEN_H); } break;
         case SDL_FINGERMOTION: movePress(e.tfinger.x * SCREEN_W, e.tfinger.y * SCREEN_H); break;
         case SDL_FINGERUP: endPress(e.tfinger.x * SCREEN_W, e.tfinger.y * SCREEN_H); break;
         case SDL_KEYDOWN:
             if (e.key.keysym.sym == SDLK_ESCAPE) { if (!backPressed()) S.quit = true; }
             break;
-        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_JOYAXISMOTION: {
+            float v = e.jaxis.value / 32767.f;
+            if (fabsf(v) < 0.18f) v = 0;   // dead zone
+            if (e.jaxis.axis == 0) S.stickX = v;
+            else if (e.jaxis.axis == 1) S.stickY = v;
+            else if (e.jaxis.axis == 3) S.rstickY = v;
+            if (v != 0 && (e.jaxis.axis == 0 || e.jaxis.axis == 1)) S.cursorOn = true;
+            break;
+        }
+        case SDL_JOYBUTTONUP: {
+            int b = e.jbutton.button;
+            if (b == 2 && S.cursorDown) { S.cursorDown = false; endPress(S.curX, S.curY); }
+            if (b >= 6 && b <= 9) S.dpad[b - 6] = false;
+            break;
+        }
         case SDL_JOYBUTTONDOWN: {
-            int b = e.type == SDL_JOYBUTTONDOWN ? e.jbutton.button : -1;
-            // Vita button numbering (SDL joystick): 0 tri,1 circle,2 cross,3 square,4 L,5 R,6 down,7 left,8 up,9 right,10 select,11 start
-            if (b == 1 || b == 11) backPressed();
-            else if (S.screen == SCR_GAME && !S.storeOpen && !S.speciesOpen && !S.tasksOpen) {
+            int b = e.jbutton.button;
+            // Vita: 0 triangle, 1 circle, 2 cross, 3 square, 4 L, 5 R, 6 down, 7 left, 8 up, 9 right, 10 select, 11 start
+            if (b >= 6 && b <= 9) { S.dpad[b - 6] = true; S.cursorOn = true; break; }
+            if (b == 2) { S.cursorOn = true; S.cursorDown = true; beginPress(S.curX, S.curY); break; }
+            if (S.cursorDown) break;
+            if (b == 10 && S.screen == SCR_MENU) { S.quitViaSelect = true; S.quit = true; break; }
+            if (b == 1) { backPressed(); break; }
+            if (b == 11) { if (S.screen == SCR_GAME && !S.optionsOpen) openOptions(); else backPressed(); break; }
+            if (S.screen == SCR_GAME && !S.storeOpen && !S.speciesOpen && !S.tasksOpen && !S.optionsOpen && !S.alertOpen) {
                 if (b == 4 || b == 5) {
                     int dir = b == 5 ? 1 : -1;
                     for (int k = 1; k <= 3; k++) { int t = (S.tank + dir * k + 3) % 3; if (G.tankUnlocked(t)) { S.tank = t; break; } }
-                    S.selFish = -1; refreshTankButtons(); refreshFishInfo();
+                    S.selFish = -1; refreshTankButtons(); refreshFishInfo(); audio::play("SFX_TapButton2");
                 } else if (b == 0) openStore("supplies");
                 else if (b == 3) openSpecies(S.selFish);
-                else if (b == 10) openOptions();
-                else if (b == 7 || b == 9) {
-                    std::vector<int> ids; for (auto& f : G.fish) if (f.tank == S.tank) ids.push_back(f.id);
-                    if (!ids.empty()) {
-                        auto it = std::find(ids.begin(), ids.end(), S.selFish);
-                        int i = it == ids.end() ? 0 : (int)(it - ids.begin()) + (b == 9 ? 1 : -1);
-                        S.selFish = ids[(i + ids.size()) % ids.size()]; refreshFishInfo();
-                    }
-                } else if (b == 2 && S.selFish >= 0) openSpecies(S.selFish);
+                else if (b == 10) {
+                    UINode* n = N("GameView/TopRight/ItemsButton"); if (n && n->onClick) n->onClick();
+                }
+            } else if (S.storeOpen && (b == 4 || b == 5)) {   // L/R switch store tabs
+                static const char* tabs[5] = {"supplies", "bank", "upgrades", "research", "decorations"};
+                static int ti = 0; ti = (ti + (b == 5 ? 1 : 4)) % 5; openStore(tabs[ti]);
             }
             break;
         }
@@ -674,8 +690,30 @@ static void updateBreeding(float dt) {
     if (steam) steam->alphaMul = S.breeding ? 0.5f + 0.5f * sinf(S.time * 4) : 0;
 }
 
+static void updateCursor(float dt) {
+    float dx = S.stickX, dy = S.stickY;
+    if (S.dpad[1]) dx -= 1; if (S.dpad[3]) dx += 1; if (S.dpad[2]) dy -= 1; if (S.dpad[0]) dy += 1;
+    if (dx == 0 && dy == 0) { S.curSpeed = 0; }
+    else {
+        S.curSpeed = std::min(1.f, S.curSpeed + dt * 2.5f);
+        float sp = 260 + 520 * S.curSpeed;
+        float mag = std::min(1.f, sqrtf(dx * dx + dy * dy));
+        float nx = dx / std::max(0.001f, sqrtf(dx * dx + dy * dy)), ny = dy / std::max(0.001f, sqrtf(dx * dx + dy * dy));
+        S.curX = std::max(0.f, std::min((float)SCREEN_W - 1, S.curX + nx * mag * mag * sp * dt));
+        S.curY = std::max(0.f, std::min((float)SCREEN_H - 1, S.curY + ny * mag * mag * sp * dt));
+        movePress(S.curX, S.curY);
+    }
+    // right stick scrolls lists by simulating a drag on the scroll area under the cursor
+    if (S.rstickY != 0 && !S.cursorDown && ui::hitAny(S.curX, S.curY)) {
+        if (!S.rscroll) { S.rscroll = true; S.rsY = S.curY; ui::pointerDown(S.curX, S.curY); }
+        S.rsY -= S.rstickY * 600 * dt;
+        ui::pointerMove(S.curX + (S.rsY - S.curY), S.rsY);
+    } else if (S.rscroll) { S.rscroll = false; ui::pointerUp(-1000, -1000); }
+}
+
 void update(float dt) {
     S.time += dt;
+    updateCursor(dt);
     if (S.toastT > 0) S.toastT -= dt;
     S.tickTimer -= dt;
     if (S.tickTimer <= 0) {
@@ -716,6 +754,12 @@ void render() {
         const Sprite* ic = iconFor(S.dragItem);
         if (ic) { float k = std::min(70.f / std::max(1.f, ic->fw), 70.f / std::max(1.f, ic->fh)); gfx::drawSprite(ic, S.dragX, S.dragY, k, k, 0, Color{1, 1, 1, .85f}); }
     }
+    if (S.cursorOn) {
+        static const Sprite* hand = gfx::spriteByName("hand");
+        float k = S.cursorDown ? 0.55f : 0.62f;
+        if (hand) gfx::drawSprite(hand, S.curX + hand->fw * k * (hand->px - 0.3f), S.curY + hand->fh * k * (0.88f - hand->py) , k, k);
+        else gfx::fillRect(FRect{S.curX - 4, S.curY - 4, 8, 8}, Color{1, 1, 1, 1});
+    }
     if (S.toastT > 0 && !S.toast.empty()) {
         float a = std::min(1.f, S.toastT * 2);
         float w = 560, h = 44;
@@ -735,6 +779,14 @@ void shutdown() {
     gfx::shutdown();
 }
 bool wantsQuit() { return S.quit; }
+bool quitViaSelect() { return S.quitViaSelect; }
+std::string stateSummary() {
+    char b[512];
+    int alive = 0; for (auto& f : G.fish) if (f.alive()) alive++;
+    snprintf(b, sizeof b, "screen=%d tank=%d coins=%d gems=%d fish=%d (alive %d) items=%d species=%d magic=%d taskWave=%d paused=%d playtime=%ds",
+             (int)S.screen, S.tank, G.coins, G.gems, (int)G.fish.size(), alive, (int)G.items.size(), G.numDiscovered(), (int)G.magicDiscovered.size(), G.taskWave, (int)G.paused, G.now());
+    return b;
+}
 
 void debugCommand(const std::string& cmd) {
     if (cmd == "play") { if (UINode* n = N("MainMenuView/PlayButton")) if (n->onClick) n->onClick(); }
@@ -752,6 +804,7 @@ void debugCommand(const std::string& cmd) {
     else if (cmd == "breed") { int n = 0; for (auto& f : G.fish) if (f.adult() && f.alive() && f.tank >= 0 && n < 2) { f.tank = TANK_BREEDING; n++; } }
     else if (cmd == "alert") alert("TITLE", "Some alert text here.", "OK", nullptr, "CANCEL", nullptr);
     else if (cmd == "back") backPressed();
+    else if (cmd.rfind("cursor ", 0) == 0) { sscanf(cmd.c_str() + 7, "%f %f", &S.curX, &S.curY); S.cursorOn = true; }
     else if (cmd.rfind("dump ", 0) == 0) {
         ui::layout();
         std::function<void(UINode*, int)> d = [&](UINode* n, int dep) {

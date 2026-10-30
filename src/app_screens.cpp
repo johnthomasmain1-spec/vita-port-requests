@@ -547,7 +547,9 @@ static void fillOptions() {
     cshow(o, "MusicHolder/Toggle/Checkmark", audio::musicVolume() > 0);
     cshow(o, "SoundHolder/Toggle/Checkmark", audio::sfxVolume() > 0);
     ctext(o, "ButtonsHolder/Pause/Text", G.paused ? "Resume" : "Pause");
-    ctext(o, "ButtonsHolder/ResetGame/Text", "Reset\nProfile");
+    ctext(o, "ButtonsHolder/ResetGame/Text", "Reset");
+    if (UINode* p = C(o, "ButtonsHolder/Pause")) ui::setRect(p, .5f, .5f, .5f, .5f, -150, 10, 260, 100);
+    if (UINode* r = C(o, "ButtonsHolder/ResetGame")) ui::setRect(r, .5f, .5f, .5f, .5f, 150, 10, 260, 100);
 }
 void openOptions() {
     S.optionsOpen = true;

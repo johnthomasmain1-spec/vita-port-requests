@@ -528,7 +528,21 @@ bool Game::save(const std::string& path) {
     if (!f) return false;
     fwrite(out.data(), 1, out.size(), f);
     fclose(f);
-    remove(path.c_str());
+    // keep two rolling backups of the last good saves
+    {
+        FILE* chk = fopen(path.c_str(), "rb");
+        if (chk) {
+            fseek(chk, 0, SEEK_END); long n = ftell(chk); fclose(chk);
+            if (n > 10) {
+                std::string b1 = path + ".bak", b2 = path + ".bak2";
+                static double lastRoll = 0;
+                if (unixNow() - lastRoll > 300) {   // rotate the older backup at most every 5 minutes
+                    remove(b2.c_str()); rename(b1.c_str(), b2.c_str()); lastRoll = unixNow();
+                } else remove(b1.c_str());
+                rename(path.c_str(), b1.c_str());
+            } else remove(path.c_str());
+        }
+    }
     rename(tmp.c_str(), path.c_str());
     dirty = false;
     return true;
@@ -536,7 +550,9 @@ bool Game::save(const std::string& path) {
 
 bool Game::load(const std::string& path) {
     JV r = jload(path);
-    if (!r.isObj()) return false;
+    if (!r.isObj() || !r.has("coins")) { SDL_Log("save unreadable, trying backup"); r = jload(path + ".bak"); }
+    if (!r.isObj() || !r.has("coins")) { SDL_Log("backup unreadable, trying second backup"); r = jload(path + ".bak2"); }
+    if (!r.isObj() || !r.has("coins")) return false;
     coins = r["coins"].i(); gems = r["gems"].i();
     startEpoch = (long long)r["start"].num();
     nextFishId = r["nextFish"].i(1); nextItemUid = r["nextItem"].i(1);

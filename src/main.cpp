@@ -4,11 +4,16 @@
 #include <vector>
 #include "app.h"
 #include "gfx.h"
+#include "json.h"
+#include <ctime>
+#include <cstdio>
+#include <sys/stat.h>
 
 #ifdef __vita__
 #include <psp2/kernel/processmgr.h>
 #include <psp2/power.h>
 #include <psp2/apputil.h>
+#include <psp2/io/stat.h>
 int _newlib_heap_size_user = 200 * 1024 * 1024;
 #define DATA_DIR "ux0:data/ft2vita"
 #define SAVE_DIR "ux0:data/ft2vita/save"
@@ -16,6 +21,36 @@ int _newlib_heap_size_user = 200 * 1024 * 1024;
 #define DATA_DIR "data"
 #define SAVE_DIR "save"
 #endif
+
+// ---------------- logging & dumps
+static std::string g_logDir;
+static std::vector<std::string> g_ring;
+static FILE* g_logf = nullptr;
+static void logOut(void*, int, SDL_LogPriority pr, const char* msg) {
+    char tbuf[32]; time_t t = time(nullptr); strftime(tbuf, sizeof tbuf, "%H:%M:%S", localtime(&t));
+    std::string line = std::string(tbuf) + " [" + std::to_string((int)pr) + "] " + msg;
+    g_ring.push_back(line);
+    if (g_ring.size() > 400) g_ring.erase(g_ring.begin());
+    if (g_logf) { fputs(line.c_str(), g_logf); fputc('\n', g_logf); fflush(g_logf); }
+#ifndef __vita__
+    fprintf(stderr, "%s\n", msg);
+#endif
+}
+static std::string stamp() { char b[32]; time_t t = time(nullptr); strftime(b, sizeof b, "%Y%m%d_%H%M%S", localtime(&t)); return b; }
+static bool copyFile(const std::string& a, const std::string& b) {
+    std::string s; if (!readFile(a, s)) return false;
+    FILE* f = fopen(b.c_str(), "wb"); if (!f) return false;
+    fwrite(s.data(), 1, s.size(), f); fclose(f); return true;
+}
+static void writeDump(const char* reason) {
+    std::string p = g_logDir + "/dump_" + stamp() + ".txt";
+    FILE* f = fopen(p.c_str(), "wb");
+    if (!f) return;
+    fprintf(f, "Fish Tycoon 2 Vita port - dump (%s)\n%s\n\n", reason, app::stateSummary().c_str());
+    fprintf(f, "---- last log lines ----\n");
+    for (auto& l : g_ring) fprintf(f, "%s\n", l.c_str());
+    fclose(f);
+}
 
 static void fatal(const std::string& msg) {
     SDL_Log("%s", msg.c_str());
@@ -36,6 +71,22 @@ int main(int argc, char** argv) {
         else if (a == "--shot" && i + 1 < argc) shot = argv[++i];
         else if (a == "--frames" && i + 1 < argc) frames = atoi(argv[++i]);
         else if (a == "--cmd" && i + 1 < argc) cmds.push_back(argv[++i]);
+    }
+    g_logDir = saveDir;
+#ifndef __vita__
+    mkdir(saveDir.c_str(), 0777);
+#endif
+#ifdef __vita__
+    sceIoMkdir(DATA_DIR, 0777); sceIoMkdir(saveDir.c_str(), 0777);
+#endif
+    {   // crash detection: a leftover run flag means the last session didn't close cleanly
+        std::string flag = saveDir + "/running.flag", logp = saveDir + "/log.txt";
+        FILE* fl = fopen(flag.c_str(), "rb");
+        if (fl) { fclose(fl); copyFile(logp, saveDir + "/crash_" + stamp() + ".txt"); }
+        g_logf = fopen(logp.c_str(), "wb");
+        FILE* fw = fopen(flag.c_str(), "wb"); if (fw) { fputs("1", fw); fclose(fw); }
+        SDL_LogSetOutputFunction(logOut, nullptr);
+        SDL_Log("start %s", stamp().c_str());
     }
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) < 0) { SDL_Log("SDL_Init: %s", SDL_GetError()); return 1; }
@@ -67,6 +118,8 @@ int main(int argc, char** argv) {
         IMG_SavePNG(s, shot.c_str());
         SDL_FreeSurface(s);
         app::shutdown();
+        if (g_logf) fclose(g_logf);
+        remove((saveDir + "/running.flag").c_str());
         SDL_Quit();
         return 0;
     }
@@ -83,6 +136,10 @@ int main(int argc, char** argv) {
         app::render();
     }
     app::shutdown();
+    SDL_Log("clean exit%s", app::quitViaSelect() ? " (SELECT on title screen)" : "");
+    if (app::quitViaSelect()) writeDump("closed with SELECT from title screen");
+    if (g_logf) fclose(g_logf);
+    remove((saveDir + "/running.flag").c_str());
     SDL_Quit();
 #ifdef __vita__
     sceKernelExitProcess(0);

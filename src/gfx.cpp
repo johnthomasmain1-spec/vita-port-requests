@@ -45,7 +45,7 @@ bool init(const std::string& dd) {
         s.tex = loadTexture(file);
         s.src = {v["x"].i(), v["y"].i(), v["w"].i(), v["h"].i()};
         s.fw = v["fw"].f(); s.fh = v["fh"].f(); s.ox = v["ox"].f(); s.oy = v["oy"].f();
-        s.px = v["px"].f(.5f); s.py = v["py"].f(.5f); s.ppu = v["ppu"].f(1);
+        s.px = v["px"].f(.5f); s.py = v["py"].f(.5f); s.ppu = v["ppu"].f(1); s.k = v["k"].f(1);
         for (int i = 0; i < 4; i++) s.b[i] = v["b"][i].f();
         s.name = v["n"].str();
         if (!g_byName.count(s.name)) g_byName[s.name] = kv.first;
@@ -80,7 +80,7 @@ void drawSprite(const Sprite* s, float x, float y, float sx, float sy, float rot
     // trimmed quad in sprite-local, y-up, relative to pivot
     float lx0 = -s->px * s->fw + s->ox;
     float ly0 = -s->py * s->fh + s->oy;   // bottom
-    float w = s->src.w, h = s->src.h;
+    float w = s->src.w / s->k, h = s->src.h / s->k;
     if (flipX) lx0 = -(lx0 + w);
     SDL_FRect d;
     d.x = x + lx0 * sx;
@@ -98,10 +98,11 @@ void drawSpriteRect(const Sprite* s, FRect r, Color c, bool flipX) {
     // account for trimming: map full rect to r
     float kx = r.w / std::max(1.f, s->fw), ky = r.h / std::max(1.f, s->fh);
     SDL_FRect d;
-    float ox = flipX ? (s->fw - s->ox - s->src.w) : s->ox;
+    float sw = s->src.w / s->k, sh = s->src.h / s->k;
+    float ox = flipX ? (s->fw - s->ox - sw) : s->ox;
     d.x = r.x + ox * kx;
-    d.y = r.y + (s->fh - s->oy - s->src.h) * ky;
-    d.w = s->src.w * kx; d.h = s->src.h * ky;
+    d.y = r.y + (s->fh - s->oy - sh) * ky;
+    d.w = sw * kx; d.h = sh * ky;
     tint(s->tex, c);
     SDL_RenderCopyExF(R, s->tex, &s->src, &d, 0, nullptr, flipX ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
 }
@@ -114,8 +115,9 @@ void drawSliced(const Sprite* s, FRect r, float bs, Color c, bool fillCenter) {
     float dl = L * bs, dr = Rb * bs, db = B * bs, dt = T * bs;
     if (dl + dr > r.w && dl + dr > 0) { float k = r.w / (dl + dr); dl *= k; dr *= k; }
     if (dt + db > r.h && dt + db > 0) { float k = r.h / (dt + db); dt *= k; db *= k; }
-    float sxs[4] = {0, L, s->src.w - Rb, (float)s->src.w};
-    float sys[4] = {0, T, s->src.h - B, (float)s->src.h};
+    float K = s->k;
+    float sxs[4] = {0, L * K, s->src.w - Rb * K, (float)s->src.w};
+    float sys[4] = {0, T * K, s->src.h - B * K, (float)s->src.h};
     float dxs[4] = {r.x, r.x + dl, r.x + r.w - dr, r.x + r.w};
     float dys[4] = {r.y, r.y + dt, r.y + r.h - db, r.y + r.h};
     tint(s->tex, c);
