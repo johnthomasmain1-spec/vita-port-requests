@@ -271,7 +271,23 @@ static void drawTankWorld() {
     for (auto& it : G.items) {
         if (it.tank != S.tank) continue;
         auto w = g_itemW.find(it.id);
-        if (w != g_itemW.end()) {
+        if (it.hatchAt > 0 && w != g_itemW.end()) {
+            // egg clutch: small eggs scattered on the gravel, sized like real fish eggs next to the fish
+            const Sprite* egg = nullptr;
+            std::function<void(const WNode&)> findEgg = [&](const WNode& n) { if (!egg && n.sp) egg = n.sp; for (auto& k : n.kids) findEgg(k); };
+            findEgg(w->second);
+            if (egg) {
+                unsigned seed = (unsigned)it.uid * 2654435761u;
+                auto r01 = [&]() { seed = seed * 1103515245u + 12345u; return ((seed >> 8) & 0xffff) / 65535.f; };
+                for (int e = 0; e < 9; e++) {
+                    float ex = it.x + (r01() - .5f) * 70, ey = it.y + (r01() - .5f) * 18;
+                    float s = 0.28f + r01() * 0.08f;
+                    // tiny wobble while incubating
+                    float wob = sinf(S.time * 3 + e) * 1.5f;
+                    draws.push_back({egg, ex, ey + wob, -3.f - ey * 0.001f, s, s, 0, Color{1, 1, 1, .95f}, false, 0, SDL_BLENDMODE_BLEND});
+                }
+            }
+        } else if (w != g_itemW.end()) {
             WNode n = w->second; n.x = it.x; n.y = it.y; n.z = -3; n.sx = n.sy = it.scale;
             collectW(n, 0, 0, 0, 1, 1, draws);
         } else if (const Sprite* ic = itemIcon(it.id)) {
@@ -301,9 +317,9 @@ static void drawTankWorld() {
     for (auto& it : G.items) {
         if (it.tank != S.tank || it.hatchAt <= 0) continue;
         int left = (int)std::max(0.0, it.hatchAt - Game::unixNow());
-        gfx::TextStyle ts; ts.size = 14; ts.color = Color{1, 1, 1, 1}; ts.outline = true; ts.outlineColor = Color{0, 0, 0, .8f};
+        gfx::TextStyle ts; ts.size = 11; ts.color = Color{1, 1, 1, .9f}; ts.outline = true; ts.outlineColor = Color{0, 0, 0, .8f};
         char buf[16]; snprintf(buf, sizeof buf, "%d:%02d", left / 60, left % 60);
-        gfx::drawText(buf, FRect{wsx(it.x) - 40, wsy(it.y) - 70, 80, 20}, ts);
+        gfx::drawText(buf, FRect{wsx(it.x) - 40, wsy(it.y) - 28, 80, 16}, ts);
     }
     drawParticles();
 }
@@ -804,6 +820,7 @@ void debugCommand(const std::string& cmd) {
     else if (cmd == "breed") { int n = 0; for (auto& f : G.fish) if (f.adult() && f.alive() && f.tank >= 0 && n < 2) { f.tank = TANK_BREEDING; n++; } }
     else if (cmd == "alert") alert("TITLE", "Some alert text here.", "OK", nullptr, "CANCEL", nullptr);
     else if (cmd == "back") backPressed();
+    else if (cmd == "placeeggs") { for (int i = 0; i < 2; i++) { TankItem e; e.id = i ? "supplies_eggs_rare" : "supplies_eggs_common"; e.tank = S.tank; e.x = -200 + i * 300; e.y = -240; e.hatchAt = Game::unixNow() + 60; e.uid = G.nextItemUid++; G.items.push_back(e); } }
     else if (cmd.rfind("cursor ", 0) == 0) { sscanf(cmd.c_str() + 7, "%f %f", &S.curX, &S.curY); S.cursorOn = true; }
     else if (cmd.rfind("dump ", 0) == 0) {
         ui::layout();
